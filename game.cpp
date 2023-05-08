@@ -15,6 +15,7 @@ float peak = 0;												// peak line rendering performance
 Surface* reference, *backup;								// surfaces
 int* ref8;													// grayscale image for evaluation
 Timer tm;													// stopwatch
+double inv255 = 1.0 / 255.0;                                // inverse of 255 to save time on divisions
 
 // -----------------------------------------------------------
 // Mutate
@@ -92,8 +93,6 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
     /* Line is not horizontal, diagonal, or vertical */
     unsigned short ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
     BYTE rl = GetRValue( clrLine );
-    double grayl = rl * 1.0;
-    
     /* Is this an X-major or Y-major line? */
     if (DeltaY > DeltaX) {
         /* Y-major line; calculate 16-bit fixed-point fractional part of a
@@ -116,16 +115,18 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
             
             COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
             BYTE rb = GetRValue( clrBackGround );
-            double grayb = rb * 1.0;
-            
-            BYTE rr = ( rb > rl ? ( ( BYTE )( ( ( double )( grayl<grayb?Weighting:(Weighting ^ 255)) ) / 255.0 * ( rb - rl ) + rl ) ) : ( ( BYTE )( ( ( double )( grayl<grayb?Weighting:(Weighting ^ 255)) ) / 255.0 * ( rl - rb ) + rb ) ) );
+
+            bool bgl = rb > rl;
+            double factor = ( bgl ? Weighting : ( Weighting ^ 255 ) ) * inv255;
+            BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
             screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
             
             clrBackGround = screen->pixels[X0 + XDir + Y0 * SCRWIDTH];
             rb = GetRValue( clrBackGround );
-            grayb = rb * 1.0;
-            
-            rr = ( rb > rl ? ( ( BYTE )( ( ( double )( grayl<grayb?(Weighting ^ 255):Weighting) ) / 255.0 * ( rb - rl ) + rl ) ) : ( ( BYTE )( ( ( double )( grayl<grayb?(Weighting ^ 255):Weighting) ) / 255.0 * ( rl - rb ) + rb ) ) );
+
+            bgl = rb > rl;
+            factor = ( bgl ? ( Weighting ^ 255 ) : Weighting) * inv255;
+            rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
             screen->Plot( X0 + XDir, Y0, RGB( rr, rr, rr ) );
         }
 
@@ -148,23 +149,25 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
             Y0++;
         }
         X0 += XDir; /* X-major, so always advance X */
-                    /* The IntensityBits most significant bits of ErrorAcc give us the
-                    intensity weighting for this pixel, and the complement of the
+        /* The IntensityBits most significant bits of ErrorAcc give us the
+        intensity weighting for this pixel, and the complement of the
         weighting for the paired pixel */
         Weighting = ErrorAcc >> 8;
         
         COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
         BYTE rb = GetRValue( clrBackGround );
-        double grayb = rb * 1.0;
         
-        BYTE rr = ( rb > rl ? ( ( BYTE )( ( ( double )( grayl<grayb?Weighting:(Weighting ^ 255)) ) / 255.0 * ( rb - rl ) + rl ) ) : ( ( BYTE )( ( ( double )( grayl<grayb?Weighting:(Weighting ^ 255)) ) / 255.0 * ( rl - rb ) + rb ) ) );        
+        bool bgl = rb > rl;
+        double factor = ( bgl ? Weighting : ( Weighting ^ 255 ) ) * inv255;
+        BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
         screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
         
         clrBackGround = screen->pixels[X0 + (Y0 + 1 )* SCRWIDTH];
         rb = GetRValue( clrBackGround );
-        grayb = rb * 1.0;
         
-        rr = ( rb > rl ? ( ( BYTE )( ( ( double )( grayl<grayb?(Weighting ^ 255):Weighting) ) / 255.0 * ( rb - rl ) + rl ) ) : ( ( BYTE )( ( ( double )( grayl<grayb?(Weighting ^ 255):Weighting) ) / 255.0 * ( rl - rb ) + rb ) ) );        
+        bgl = rb > rl;
+        factor = ( bgl ? ( Weighting ^ 255 ) : Weighting ) * inv255;
+        rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
         screen->Plot( X0, Y0 + 1, RGB( rr, rr, rr ) );
     }
     
