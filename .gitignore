@@ -1,0 +1,12 @@
+
+*.vsidx
+*.lock
+.vs/evolution/v17/.suo
+*.db
+*.db-shm
+*.db-wal
+*.opendb
+*.ipch
+*.user
+*.dat
+x64/*
