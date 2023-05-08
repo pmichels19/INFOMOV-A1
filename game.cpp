@@ -15,7 +15,7 @@ float peak = 0;												// peak line rendering performance
 Surface* reference, *backup;								// surfaces
 int* ref8;													// grayscale image for evaluation
 Timer tm;													// stopwatch
-double inv255 = 1.0 / 255.0;                                // inverse of 255 to save time on divisions
+float inv255 = 1.0 / 255.0;                                 // inverse of 255 to save time on divisions
 
 // -----------------------------------------------------------
 // Mutate
@@ -82,25 +82,25 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
         DeltaX = 0 - DeltaX; /* make DeltaX positive */
     }
     
-    /* Special-case horizontal, vertical, and diagonal lines, which
-    require no weighting because they go right through the center of
-    every pixel */
+    /* Special-case horizontal, vertical, and diagonal lines, which require no weighting because they go right through the center of every pixel */
     int DeltaY = Y1 - Y0;
     
-    unsigned short ErrorAdj;
-    unsigned short ErrorAccTemp, Weighting;
+    uint16_t ErrorAdj;
+	uint16_t ErrorAccTemp, Weighting;
     
     /* Line is not horizontal, diagonal, or vertical */
-    unsigned short ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
+	uint16_t ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
     BYTE rl = GetRValue( clrLine );
     /* Is this an X-major or Y-major line? */
     if (DeltaY > DeltaX) {
-        /* Y-major line; calculate 16-bit fixed-point fractional part of a
-        pixel that X advances each time Y advances 1 pixel, truncating the
-        result so that we won't overrun the endpoint along the X axis */
+        /* Y-major line; calculate 16-bit fixed-point fractional part of a pixel that X advances each time Y advances 1 pixel, truncating the result so that we won't overrun the endpoint along the X axis */
         ErrorAdj = ((unsigned long) DeltaX << 16) / (unsigned long) DeltaY;
         /* Draw all pixels other than the first and last */
-        while (--DeltaY) {
+        while (true) {
+			if ( !--DeltaY ) {
+				break;
+			}
+
             ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
             ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
             if (ErrorAcc <= ErrorAccTemp) {
@@ -108,16 +108,14 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
                 X0 += XDir;
             }
             Y0++; /* Y-major, so always advance Y */
-            /* The IntensityBits most significant bits of ErrorAcc give us the
-            intensity weighting for this pixel, and the complement of the
-            weighting for the paired pixel */
+            /* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
             Weighting = ErrorAcc >> 8;
             
             COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
             BYTE rb = GetRValue( clrBackGround );
 
             bool bgl = rb > rl;
-            double factor = ( bgl ? Weighting : ( Weighting ^ 255 ) ) * inv255;
+            float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
             BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
             screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
             
@@ -125,7 +123,7 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
             rb = GetRValue( clrBackGround );
 
             bgl = rb > rl;
-            factor = ( bgl ? ( Weighting ^ 255 ) : Weighting) * inv255;
+            factor = ( bgl ? ( 255 - Weighting ) : Weighting) * inv255;
             rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
             screen->Plot( X0 + XDir, Y0, RGB( rr, rr, rr ) );
         }
@@ -136,12 +134,13 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
         return;
     }
 
-    /* It's an X-major line; calculate 16-bit fixed-point fractional part of a
-    pixel that Y advances each time X advances 1 pixel, truncating the
-    result to avoid overrunning the endpoint along the X axis */
+    /* It's an X-major line; calculate 16-bit fixed-point fractional part of a pixel that Y advances each time X advances 1 pixel, truncating the result to avoid overrunning the endpoint along the X axis */
     ErrorAdj = ((unsigned long) DeltaY << 16) / (unsigned long) DeltaX;
     /* Draw all pixels other than the first and last */
-    while (--DeltaX) {
+    while (true) {
+		if ( !--DeltaX ) {
+			break;
+		}
         ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
         ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
         if (ErrorAcc <= ErrorAccTemp) {
@@ -149,16 +148,14 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
             Y0++;
         }
         X0 += XDir; /* X-major, so always advance X */
-        /* The IntensityBits most significant bits of ErrorAcc give us the
-        intensity weighting for this pixel, and the complement of the
-        weighting for the paired pixel */
+        /* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
         Weighting = ErrorAcc >> 8;
         
         COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
         BYTE rb = GetRValue( clrBackGround );
         
         bool bgl = rb > rl;
-        double factor = ( bgl ? Weighting : ( Weighting ^ 255 ) ) * inv255;
+        float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
         BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
         screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
         
@@ -166,7 +163,7 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
         rb = GetRValue( clrBackGround );
         
         bgl = rb > rl;
-        factor = ( bgl ? ( Weighting ^ 255 ) : Weighting ) * inv255;
+        factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
         rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
         screen->Plot( X0, Y0 + 1, RGB( rr, rr, rr ) );
     }
