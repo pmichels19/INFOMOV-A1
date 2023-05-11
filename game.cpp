@@ -55,6 +55,84 @@ void UndoMutation( int i )
 	lx2[i] = x2_, ly2[i] = y2_;
 }
 
+void drawYLine( Surface* screen, int DeltaX, int DeltaY, int X0, int Y0, int XDir, uint8_t rl ) {
+	/* Y-major line; calculate 16-bit fixed-point fractional part of a pixel that X advances each time Y advances 1 pixel, truncating the result so that we won't overrun the endpoint along the X axis */
+	uint16_t ErrorAdj = ( (unsigned long) DeltaX << 16 ) / (unsigned long) DeltaY;
+	uint16_t ErrorAccTemp;
+	uint16_t Weighting;
+	uint16_t ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
+	/* Draw all pixels other than the first and last */
+	while ( true ) {
+		if ( !--DeltaY ) {
+			return;
+		}
+
+		ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
+		ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
+		if ( ErrorAcc <= ErrorAccTemp ) {
+			/* The error accumulator turned over, so advance the X coord */
+			X0 += XDir;
+		}
+
+		Y0++; /* Y-major, so always advance Y */
+		/* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
+		Weighting = ErrorAcc >> 8;
+
+		int idx = X0 + Y0 * SCRWIDTH;
+
+		uint8_t rb = screen->pixels[idx] & 255;
+		bool bgl = rb > rl;
+		float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
+		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		screen->pixels[idx] = ( rr << 16 ) | ( rr << 8 ) | rr;
+
+		rb = screen->pixels[idx + XDir] & 255;
+		bgl = rb > rl;
+		factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
+		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		screen->pixels[idx + XDir] = ( rr << 16 ) | ( rr << 8 ) | rr;
+	}
+}
+
+void drawXLine( Surface* screen, int DeltaX, int DeltaY, int X0, int Y0, int XDir, uint8_t rl ) {
+	/* It's an X-major line; calculate 16-bit fixed-point fractional part of a pixel that Y advances each time X advances 1 pixel, truncating the result to avoid overrunning the endpoint along the X axis */
+	uint16_t ErrorAdj = ( (unsigned long) DeltaY << 16 ) / (unsigned long) DeltaX;
+	uint16_t ErrorAccTemp;
+	uint16_t Weighting;
+	uint16_t ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
+	/* Draw all pixels other than the first and last */
+	while ( true ) {
+		if ( !--DeltaX ) {
+			return;
+		}
+
+		ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
+		ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
+		if ( ErrorAcc <= ErrorAccTemp ) {
+			/* The error accumulator turned over, so advance the Y coord */
+			Y0++;
+		}
+
+		X0 += XDir; /* X-major, so always advance X */
+		/* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
+		Weighting = ErrorAcc >> 8;
+
+		int idx = X0 + Y0 * SCRWIDTH;
+
+		uint8_t rb = screen->pixels[idx] & 255;
+		bool bgl = rb > rl;
+		float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
+		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		screen->pixels[idx] = ( rr << 16 ) | ( rr << 8 ) | rr;
+
+		rb = screen->pixels[idx + SCRWIDTH] & 255;
+		bgl = rb > rl;
+		factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
+		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		screen->pixels[idx + SCRWIDTH] = ( rr << 16 ) | ( rr << 8 ) | rr;
+	}
+}
+
 // -----------------------------------------------------------
 // DrawWuLine
 // Anti-aliased line rendering.
@@ -64,16 +142,14 @@ void UndoMutation( int i )
 void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine ) {
     /* Make sure the line runs top to bottom */
     if (Y0 > Y1) {
-        int Temp = Y0;
-        Y0 = Y1;
-        Y1 = Temp;
-        Temp = X0;
-        X0 = X1;
-        X1 = Temp;
+		swap(X0, X1);
+		swap(Y0, Y1);
     }
     
     /* Draw the initial pixel, which is always exactly intersected by the line and so needs no weighting */
-    screen->Plot( X0, Y0, clrLine );
+	screen->pixels[X0 + Y0 * SCRWIDTH] = clrLine;
+	/* Draw the final pixel, which is always exactly intersected by the line and so needs no weighting */
+	screen->pixels[X1 + Y1 * SCRWIDTH] = clrLine;
     
     int XDir = 1;
     int DeltaX = X1 - X0;
@@ -84,93 +160,12 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
     
     /* Special-case horizontal, vertical, and diagonal lines, which require no weighting because they go right through the center of every pixel */
     int DeltaY = Y1 - Y0;
-    
-    uint16_t ErrorAdj;
-	uint16_t ErrorAccTemp, Weighting;
-    
-    /* Line is not horizontal, diagonal, or vertical */
-	uint16_t ErrorAcc = 0;  /* initialize the line error accumulator to 0 */
-    BYTE rl = GetRValue( clrLine );
-    /* Is this an X-major or Y-major line? */
-    if (DeltaY > DeltaX) {
-        /* Y-major line; calculate 16-bit fixed-point fractional part of a pixel that X advances each time Y advances 1 pixel, truncating the result so that we won't overrun the endpoint along the X axis */
-        ErrorAdj = ((unsigned long) DeltaX << 16) / (unsigned long) DeltaY;
-        /* Draw all pixels other than the first and last */
-        while (true) {
-			if ( !--DeltaY ) {
-				break;
-			}
-
-            ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
-            ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
-            if (ErrorAcc <= ErrorAccTemp) {
-                /* The error accumulator turned over, so advance the X coord */
-                X0 += XDir;
-            }
-            Y0++; /* Y-major, so always advance Y */
-            /* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
-            Weighting = ErrorAcc >> 8;
-            
-            COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
-            BYTE rb = GetRValue( clrBackGround );
-
-            bool bgl = rb > rl;
-            float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
-            BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
-            screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
-            
-            clrBackGround = screen->pixels[X0 + XDir + Y0 * SCRWIDTH];
-            rb = GetRValue( clrBackGround );
-
-            bgl = rb > rl;
-            factor = ( bgl ? ( 255 - Weighting ) : Weighting) * inv255;
-            rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
-            screen->Plot( X0 + XDir, Y0, RGB( rr, rr, rr ) );
-        }
-
-        /* Draw the final pixel, which is always exactly intersected by the line
-        and so needs no weighting */
-        screen->Plot( X1, Y1, clrLine );
-        return;
-    }
-
-    /* It's an X-major line; calculate 16-bit fixed-point fractional part of a pixel that Y advances each time X advances 1 pixel, truncating the result to avoid overrunning the endpoint along the X axis */
-    ErrorAdj = ((unsigned long) DeltaY << 16) / (unsigned long) DeltaX;
-    /* Draw all pixels other than the first and last */
-    while (true) {
-		if ( !--DeltaX ) {
-			break;
-		}
-        ErrorAccTemp = ErrorAcc;   /* remember currrent accumulated error */
-        ErrorAcc += ErrorAdj;      /* calculate error for next pixel */
-        if (ErrorAcc <= ErrorAccTemp) {
-            /* The error accumulator turned over, so advance the Y coord */
-            Y0++;
-        }
-        X0 += XDir; /* X-major, so always advance X */
-        /* The IntensityBits most significant bits of ErrorAcc give us the intensity weighting for this pixel, and the complement of the weighting for the paired pixel */
-        Weighting = ErrorAcc >> 8;
-        
-        COLORREF clrBackGround = screen->pixels[X0 + Y0 * SCRWIDTH];
-        BYTE rb = GetRValue( clrBackGround );
-        
-        bool bgl = rb > rl;
-        float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
-        BYTE rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
-        screen->Plot( X0, Y0, RGB( rr, rr, rr ) );
-        
-        clrBackGround = screen->pixels[X0 + (Y0 + 1 )* SCRWIDTH];
-        rb = GetRValue( clrBackGround );
-        
-        bgl = rb > rl;
-        factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
-        rr = (BYTE) ( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
-        screen->Plot( X0, Y0 + 1, RGB( rr, rr, rr ) );
-    }
-    
-    /* Draw the final pixel, which is always exactly intersected by the line
-    and so needs no weighting */
-    screen->Plot( X1, Y1, clrLine );
+	uint8_t rl = clrLine & 255;
+	if ( DeltaY > DeltaX ) {
+		drawYLine(screen, DeltaX, DeltaY, X0, Y0, XDir, rl);
+	} else {
+		drawXLine(screen, DeltaX, DeltaY, X0, Y0, XDir, rl );
+	}
 }
 
 // -----------------------------------------------------------
