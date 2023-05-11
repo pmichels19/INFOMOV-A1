@@ -83,13 +83,13 @@ void drawYLine( Surface* screen, int DeltaX, int DeltaY, int X0, int Y0, int XDi
 		uint8_t rb = screen->pixels[idx] & 255;
 		bool bgl = rb > rl;
 		float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
-		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) ) + ( bgl ? rl : rb );
 		screen->pixels[idx] = ( rr << 16 ) | ( rr << 8 ) | rr;
 
 		rb = screen->pixels[idx + XDir] & 255;
 		bgl = rb > rl;
 		factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
-		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) ) + ( bgl ? rl : rb );
 		screen->pixels[idx + XDir] = ( rr << 16 ) | ( rr << 8 ) | rr;
 	}
 }
@@ -122,13 +122,13 @@ void drawXLine( Surface* screen, int DeltaX, int DeltaY, int X0, int Y0, int XDi
 		uint8_t rb = screen->pixels[idx] & 255;
 		bool bgl = rb > rl;
 		float factor = ( bgl ? Weighting : ( 255 - Weighting ) ) * inv255;
-		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		uint8_t rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) ) + ( bgl ? rl : rb );
 		screen->pixels[idx] = ( rr << 16 ) | ( rr << 8 ) | rr;
 
 		rb = screen->pixels[idx + SCRWIDTH] & 255;
 		bgl = rb > rl;
 		factor = ( bgl ? ( 255 - Weighting ) : Weighting ) * inv255;
-		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) + ( bgl ? rl : rb ) );
+		rr = static_cast<uint8_t>( factor * ( bgl ? ( rb - rl ) : ( rl - rb ) ) ) + ( bgl ? rl : rb );
 		screen->pixels[idx + SCRWIDTH] = ( rr << 16 ) | ( rr << 8 ) | rr;
 	}
 }
