@@ -10,3 +10,5 @@
 *.user
 *.dat
 x64/*
+Intel® VTune™ Profiler Results/*
+GPUCache/*
